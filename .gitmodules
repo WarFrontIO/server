@@ -1,0 +1,3 @@
+[submodule "src/network/protocol"]
+	path = src/network/protocol
+	url = https://github.com/WarFrontIO/protocol
