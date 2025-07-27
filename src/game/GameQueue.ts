@@ -48,7 +48,7 @@ export class ScheduledGame {
 		if (this.players.length === 0) {
 			return;
 		}
-		new Game(this.players);
+		new Game(this.players, "N858Os");
 	}
 }
 

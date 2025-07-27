@@ -6,21 +6,26 @@ import {GameTickPacket} from "../network/protocol/packet/game/GameTickPacket";
 import type {PacketType} from "../network/protocol/PacketRegistry";
 import {PacketException} from "../network/protocol/util/PacketException";
 import {SpawnBundlePacket} from "../network/protocol/packet/game/SpawnBundlePacket";
-import {type NetworkClient, sendPacket} from "../network/Client.ts";
+import {disconnect, type NetworkClient, sendPacket} from "../network/Client.ts";
 import {randomBytes} from "crypto";
+import {type RunnerInstance, startRunner} from "../runner/RunnerManager.ts";
+import {SocketErrorCodes} from "../network/protocol/util/SocketErrorCodes.ts";
 
 export class Game {
 	private readonly players: NetworkClient[];
 	private readonly packetQueue: GameActionPacket<unknown>[] = [];
 	private readonly playerSpawns: { position: number, updated: number }[] = [];
 	private readonly tickInterval: Timer;
+	private readonly gameRunner: RunnerInstance;
 	private incrementalId = -20;
 
 	/**
 	 * Creates a new game instance.
 	 * @param players The players in the game
+	 * @param map The map to start the game with
 	 */
-	constructor(players: NetworkClient[]) {
+	constructor(players: NetworkClient[], map: string) {
+		this.gameRunner = startRunner();
 		this.players = players;
 
 		const seed = randomBytes(4).readUInt32LE(0);
@@ -28,10 +33,20 @@ export class Game {
 		for (let i = 0; i < players.length; i++) {
 			players[i]!.data.game = this;
 			players[i]!.data.clientId = i;
-			sendPacket(players[i]!, new GameStartPacket(0, 0, seed, i, playerList));
+			sendPacket(players[i]!, new GameStartPacket(map, 0, seed, i, playerList));
 		}
+		this.gameRunner.send(GameStartPacket.prototype.transferContext.serialize(new GameStartPacket(map, 0, seed, 0, playerList), packetRegistry));
 
 		this.tickInterval = setInterval(() => this.tick(), 500);
+
+		this.gameRunner.result.then(result => {
+			//TODO: handle result
+			this.endGame();
+		}).catch(error => {
+			console.error(error);
+			//TODO: notify players
+			this.endGame();
+		})
 	}
 
 	/**
@@ -85,8 +100,20 @@ export class Game {
 			this.players.splice(index, 1);
 		}
 		if (this.players.length === 0) {
-			clearInterval(this.tickInterval);
+			this.gameRunner.stop();
+			this.endGame();
 		}
+	}
+
+	/**
+	 * Ends the game and cleans up relevant caches.
+	 */
+	endGame(): void {
+		clearInterval(this.tickInterval);
+		for (const player of this.players) {
+			disconnect(player, SocketErrorCodes.NO_ERROR); //TODO: This is not necessarily the correct error code
+		}
+		this.players.length = 0;
 	}
 
 	/**
@@ -106,5 +133,6 @@ export class Game {
 		for (const player of this.players) {
 			player.send(raw);
 		}
+		this.gameRunner.send(raw);
 	}
 }

@@ -1,3 +1,6 @@
 [submodule "src/network/protocol"]
 	path = src/network/protocol
 	url = https://github.com/WarFrontIO/protocol
+[submodule "src/runner/client"]
+	path = src/runner/client
+	url = https://github.com/WarFrontIO/client
